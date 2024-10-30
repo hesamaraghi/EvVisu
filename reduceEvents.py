@@ -20,7 +20,7 @@ class Reduction():
         sim_time=-1,   
         input_ev=np.zeros((0,4)),
         coord_t=3,
-        div=2,
+        div=(2,3),
         width=-1,
         height=-1
     ):
@@ -57,7 +57,7 @@ class Reduction():
         return int(np.max(self.input[:,self.coord_t]))
 
     def getDownscaledSensorSize(self):
-        return ceil(self.width_fullscale/self.div), ceil(self.height_fullscale/self.div)     # to keep modified ? 
+        return ceil(self.width_fullscale/self.div[0]), ceil(self.height_fullscale/self.div[1])     # to keep modified ? 
 
     def newEvent(self,x,y,p,t):
         if self.coord_t == 2:
@@ -75,10 +75,10 @@ class Reduction():
             return 0
 
     def getFullscaleCoord(self,x,y):
-        return x*self.div, min((x+1)*self.div, self.width_fullscale), y*self.div, min((y+1)*self.div, self.height_fullscale)
+        return x*self.div[0], min((x+1)*self.div[0], self.width_fullscale), y*self.div[1], min((y+1)*self.div[1], self.height_fullscale)
 
     def getDownscaleCoord(self,x,y):
-        return floor(x/self.div), floor(y/self.div)
+        return floor(x/self.div[0]), floor(y/self.div[1])
 
     def computationTime(self):
         start=time.time()
@@ -112,7 +112,7 @@ class Reduction():
 
 class SpatialFunnelling(Reduction):
 
-    def __init__(self, sim_time=-1, input_ev=np.zeros((0, 4)), coord_t=3, div=2, width=-1, height=-1):
+    def __init__(self, sim_time=-1, input_ev=np.zeros((0, 4)), coord_t=3, div=(2,3), width=-1, height=-1):
         """
         Arguments: 
         - events (numpy array): events to be reduced
@@ -123,8 +123,8 @@ class SpatialFunnelling(Reduction):
         super().__init__(sim_time, input_ev, coord_t, div, width, height)
 
     def reduce(self):
-        self.input[:,0] = np.floor(self.input[:,0]/self.div)
-        self.input[:,1] = np.floor(self.input[:,1]/self.div)
+        self.input[:,0] = np.floor(self.input[:,0]/self.div[0])
+        self.input[:,1] = np.floor(self.input[:,1]/self.div[1])
         _, idx=np.unique(self.input, axis=0, return_index=True)    
         
         self.updateEvents( self.input[np.sort(idx)] )
@@ -137,7 +137,7 @@ class SpatialFunnelling(Reduction):
 
 class EventCount(Reduction):
 
-    def __init__(self, sim_time=-1, input_ev=np.zeros((0, 4)), coord_t=3, div=2, width=-1, height=-1, threshold=1, plot=False):
+    def __init__(self, sim_time=-1, input_ev=np.zeros((0, 4)), coord_t=3, div=(2,3), width=-1, height=-1, threshold=1, plot=False):
         """
         Arguments: 
         - events (numpy array): events to be reduced
@@ -172,7 +172,7 @@ class EventCount(Reduction):
             downscale_w,downscale_h = self.getDownscaleCoord(ev[0], ev[1])
             old_level = self.downscale_state[downscale_w,downscale_h]
             w_min, w_max, h_min, h_max = self.getFullscaleCoord(downscale_w, downscale_h)
-            new_level = np.sum( self.fullscale_state[ w_min:w_max , h_min:h_max ] ) / (self.div**2)
+            new_level = np.sum( self.fullscale_state[ w_min:w_max , h_min:h_max ] ) / (self.div[0]*self.div[1])
 
             event = False
             if not new_level % self.threshold and new_level > old_level :
@@ -204,7 +204,7 @@ class EventCount(Reduction):
 
 class LogLuminance(Reduction):
 
-    def __init__(self, sim_time=-1, input_ev=np.zeros((0, 4)), coord_t=3, div=2, width=-1, height=-1,
+    def __init__(self, sim_time=-1, input_ev=np.zeros((0, 4)), coord_t=3, div=(2,3), width=-1, height=-1,
         threshold=1, cubic_interpolation=True,  # if False, the log luminance is interpolated as a polyline
         sensitivity=500
     ):
@@ -353,10 +353,10 @@ class LogLuminance(Reduction):
 
 class StochasticStructural(Reduction):
 
-    def __init__(self, sim_time=1e+6, input_ev=np.zeros((0, 4)), coord_t=3, div=50, width=128, height=128):
+    def __init__(self, sim_time=1e+6, input_ev=np.zeros((0, 4)), coord_t=3, div=(50,None), width=128, height=128):
         super().__init__(sim_time, input_ev, coord_t, div, width, height)
         
-        self.nb_events_selected = int(div * len(self.input) / 100)
+        self.nb_events_selected = int(div[0] * len(self.input) / 100)
         self.idx = np.random.choice(len(self.input), size=self.nb_events_selected, replace=False)
         self.current_idx = 0
 
@@ -368,13 +368,13 @@ class StochasticStructural(Reduction):
 
 class DeterministicStructural(Reduction):
 
-    def __init__(self, sim_time=1e+6, input_ev=np.zeros((0, 4)), coord_t=3, div=2, width=128, height=128):
-        super().__init__(sim_time, input_ev, coord_t, div, width, height)
+    def __init__(self, sim_time=1e+6, input_ev=np.zeros((0, 4)), coord_t=3, div=(2,None), width=128, height=128):
+        super().__init__(sim_time, input_ev, coord_t, div[0], width, height)
         self.current_idx = 0
 
     def reduce(self):
         for ev in self.input:
-            if not self.current_idx % self.div:
+            if not self.current_idx % self.div[0]:
                 self.updateEvents(ev)
             self.current_idx += 1
 
@@ -384,7 +384,7 @@ class DeterministicStructural(Reduction):
 
 class TemporalFunnelling(Reduction):
 
-    def __init__(self, sim_time=1e+6, input_ev=np.zeros((0, 4)), neg_pol=0, coord_t=3, div=2, width=128, height=128):
+    def __init__(self, sim_time=1e+6, input_ev=np.zeros((0, 4)), neg_pol=0, coord_t=3, div=(2,None), width=128, height=128):
         """
         Arguments: 
         - events (numpy array): events to be reduced
@@ -397,6 +397,6 @@ class TemporalFunnelling(Reduction):
 
     def reduce(self):
         for ev in self.input_t:
-            ev[self.coord_t] = np.floor(ev[self.coord_t] * self.div)
+            ev[self.coord_t] = np.floor(ev[self.coord_t] * self.div[0])
             if ev not in self.events:
                 self.updateEvents(ev)

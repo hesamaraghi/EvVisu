@@ -51,7 +51,7 @@ def ev2spikes(events,coord_t, width, height):
     for x,y,*r in tqdm(events):
         spikes[int(x)*height+int(y)].append(float(r[coord_t]))
     print("Translation done\n")
-    print(spikes)
+    # print(spikes)
     return spikes
 
 
@@ -60,13 +60,14 @@ def spikes2ev(spikes, width, height, coord_t, polarity=1):
     for n in range(len(spikes)):
         x,y = np.unravel_index(n, (width, height))
         pixel_events = np.array([ newEvent(x,y,polarity,t.item(), coord_t) for t in spikes[n]]) 
-        try : 
+        # try : 
+        if len(pixel_events) > 0:
             events = np.vstack((
                 events,
                 pixel_events
             ))
-        except ValueError:
-            pass
+        # except ValueError:
+        #     pass
 
     events = events[events[:,coord_t].argsort()]
     return events
@@ -172,11 +173,12 @@ def runSim(sim, input_spikes, sim_length, div, coord_t, neg_pol, width_fullscale
         neg_events = spikes2ev(spikes[int(len(spikes)/2):], width_downscale, height_downscale, coord_t, polarity=neg_pol)
     
     if plot:
-        v = downscale_events.get_data("v").segments[0].filter(name='v')[0]
+        v = np.array(downscale_events.get_data("v").segments[0].filter(name='v')[0])
         if keep_polarity:
-            v_pos = list(e.item() for e in v[:,0].reshape(-1))
-            v_neg = list(e.item() for e in v[:,1].reshape(-1))
-
+            # v_pos = list(e.item() for e in v[:,0].reshape(-1))
+            # v_neg = list(e.item() for e in v[:,1].reshape(-1))
+            v_pos = v[:,:int(v.shape[1]/2)]
+            v_neg = v[:,int(v.shape[1]/2):]
     sim.end()
 
     if keep_polarity:
@@ -221,8 +223,8 @@ def SNN_downscale(
     width_fullscale,height_fullscale=getSensorSize(events)
 
     if plot:
-        v_pos = []
-        v_neg = []
+        v_pos = np.array([])
+        v_neg = np.array([])
     
     last_time = 0
     nb_sim = int( np.max(events[:,coord_t]) // simulator_capacity + 1)
@@ -244,11 +246,12 @@ def SNN_downscale(
         else : 
             spikes = ev2spikes(spikes, coord_t, width_fullscale, height_fullscale)
         
-        downscaled_spikes = runSim(sim, spikes, sim_length, div, coord_t, neg_pol, width_fullscale, height_fullscale, keep_polarity, density, mutual)
+        downscaled_spikes = runSim(sim, spikes, sim_length, div, coord_t, neg_pol, width_fullscale, height_fullscale, keep_polarity, density, mutual, plot)
         if plot :
             downscaled_spikes, vp, vn = downscaled_spikes
-            v_pos = v_pos + vp
-            v_neg = v_neg + vn
+            
+            v_pos = np.concatenate([v_pos, vp]) if v_pos.size > 0 else vp
+            v_neg = np.concatenate([v_neg, vn]) if v_neg.size > 0 else vn
 
         downscaled_spikes[:,coord_t] += last_time
         downscaled_events = np.vstack((downscaled_events, downscaled_spikes))
